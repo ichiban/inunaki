@@ -33,6 +33,9 @@ func Open(host string, public ssh.PublicKey, private ssh.Signer) (*Local, error)
 		return nil, err
 	}
 
+	log := logrus.WithField("addr", conn.RemoteAddr())
+	log.Info("opened connection")
+
 	l := Local{
 		conn: conn,
 		tunnels: localTunnels{
@@ -102,14 +105,23 @@ func (l *Local) handleNewChannel(nc ssh.NewChannel) {
 }
 
 func (l *Local) Bind(name string, port int) error {
+	log := logrus.WithFields(logrus.Fields{
+		"name": name,
+		"port": port,
+	})
+
 	ok, _, err := l.conn.SendRequest("bind", true, []byte(name))
 	if err != nil {
+		log.Error("failed to bind")
 		return err
 	}
 
 	if !ok {
+		log.Warn("refused to bind")
 		return fmt.Errorf("couldn't bind: %s", name)
 	}
+
+	log.Info("succeeded to bind")
 
 	l.tunnels.set(name, port)
 	return nil

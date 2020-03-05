@@ -39,7 +39,7 @@ func (r *Remote) Outbound(port int) {
 
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		log.WithField("err", err).Info("failed to listen")
+		log.WithField("err", err).Error("failed to listen")
 		return
 	}
 	defer l.Close()
@@ -47,7 +47,7 @@ func (r *Remote) Outbound(port int) {
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			log.WithField("err", err).Info("failed to accept")
+			log.WithField("err", err).Error("failed to accept")
 			continue
 		}
 
@@ -59,26 +59,27 @@ func (r *Remote) handleOutboundConn(c net.Conn) {
 	defer c.Close()
 
 	log := logrus.WithField("addr", c.RemoteAddr())
-	log.Info("start outbound connection")
-	defer log.Info("end outbound connection")
 
 	h, pr, err := peekHost(c)
 	if err != nil {
 		return
 	}
 
+	log.Info("start outbound connection")
+	defer log.Info("end outbound connection")
+
 	name := strings.Split(h, ".")[0]
 	log = log.WithField("name", name)
 
 	t, ok := r.tunnels.get(name)
 	if !ok {
-		log.Info("no remote tunnel")
+		log.Error("no remote tunnel")
 		return
 	}
 
 	ch, reqs, nil := t.OpenChannel("tunnel", []byte(name))
 	if err != nil {
-		log.Info("failed to open tunnel")
+		log.WithField("err", err).Error("failed to open tunnel")
 		return
 	}
 	defer ch.Close()
@@ -159,14 +160,14 @@ func (r *Remote) Inbound(port int) {
 
 	listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
-		log.WithField("err", err).Info("failed to listen")
+		log.WithField("err", err).Error("failed to listen")
 		return
 	}
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.WithField("err", err).Info("failed to accept")
+			log.WithField("err", err).Error("failed to accept")
 			return
 		}
 
@@ -178,15 +179,15 @@ func (r *Remote) handleInboundConn(nConn net.Conn, config ssh.ServerConfig) {
 	defer nConn.Close()
 
 	log := logrus.WithField("addr", nConn.RemoteAddr())
-	log.Infof("start inbound connection")
-	defer log.Infof("end inbound connection")
 
 	conn, chans, reqs, err := ssh.NewServerConn(nConn, &config)
 	if err != nil {
-		log.WithField("err", err).Info("failed to handshake")
-		return
+		return // ignore err
 	}
-	log = log.WithField("fingerprint", conn.Permissions.Extensions["pubkey-fp"])
+	log = log.WithField("fp", conn.Permissions.Extensions["pubkey-fp"])
+
+	log.Info("start inbound connection")
+	defer log.Info("end inbound connection")
 
 	go func() {
 		var names []string
@@ -207,7 +208,7 @@ func (r *Remote) handleInboundConn(nConn net.Conn, config ssh.ServerConfig) {
 						continue
 					}
 					if err := req.Reply(false, nil); err != nil {
-						log.WithField("err", err).Info("failed to reply")
+						log.WithField("err", err).Error("failed to reply")
 						continue
 					}
 				}
@@ -218,7 +219,7 @@ func (r *Remote) handleInboundConn(nConn net.Conn, config ssh.ServerConfig) {
 					continue
 				}
 				if err := req.Reply(true, nil); err != nil {
-					log.WithField("err", err).Info("failed to reply")
+					log.WithField("err", err).Error("failed to reply")
 					continue
 				}
 			default:
@@ -226,7 +227,7 @@ func (r *Remote) handleInboundConn(nConn net.Conn, config ssh.ServerConfig) {
 					continue
 				}
 				if err := req.Reply(false, nil); err != nil {
-					log.WithField("err", err).Info("failed to reply")
+					log.WithField("err", err).Error("failed to reply")
 					continue
 				}
 			}
@@ -239,7 +240,7 @@ func (r *Remote) handleInboundConn(nConn net.Conn, config ssh.ServerConfig) {
 			go r.handleSession(ch)
 		default:
 			if err := ch.Reject(ssh.UnknownChannelType, "unknown channel type"); err != nil {
-				log.WithField("err", err).Info("failed to reject")
+				log.WithField("err", err).Error("failed to reject")
 				continue
 			}
 		}
@@ -253,14 +254,14 @@ func (r *Remote) handleSession(ch ssh.NewChannel) {
 
 	channel, requests, err := ch.Accept()
 	if err != nil {
-		log.WithField("err", err).Info("failed to accept")
+		log.WithField("err", err).Error("failed to accept")
 	}
 	defer channel.Close()
 
 	go func(in <-chan *ssh.Request) {
 		for req := range in {
 			if err := req.Reply(req.Type == "shell", nil); err != nil {
-				log.WithField("err", err).Info("failed to reply")
+				log.WithField("err", err).Error("failed to reply")
 				continue
 			}
 		}

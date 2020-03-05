@@ -19,6 +19,7 @@ func main() {
 	var tunnels tunnels
 	flag.StringVar(&host, "host", "ichiban.dev:22", ``)
 	flag.Var(&tunnels, "tunnel", ``)
+	flag.Parse()
 
 	private, err := privateKey()
 	if err != nil {
